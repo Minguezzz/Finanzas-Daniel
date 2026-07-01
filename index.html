@@ -293,6 +293,7 @@ let selectedLoan = null;
 let showAddCard = false;
 let confirmDeleteCard = false;
 let confirmDeleteDebt = null;
+let confirmDeleteLoan = null;
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
@@ -472,7 +473,13 @@ function allDeudores(){
   const list = [];
   data.transactions.filter(t=>t.estado==='debe' && t.tipo==='gasto').forEach(t=>{
     const c = data.cards.find(x=>x.id===t.cardId);
-    list.push({...t, cardName: c?c.name:'—'});
+    list.push({...t, source:'tarjeta', origen: c?c.name:'—'});
+  });
+  data.loans.forEach(l=>{
+    const remaining = loanRemaining(l);
+    if(remaining > 0){
+      list.push({ id:l.id, date:l.date, concept:l.name, value:remaining, source:'prestamo', origen:'Préstamo', loanId:l.id });
+    }
   });
   return list.sort((a,b)=>b.date.localeCompare(a.date));
 }
@@ -519,7 +526,7 @@ function render(){
     data = null; selectedCard=null; selectedDebt=null; selectedLoan=null; view='resumen';
   };
   document.querySelectorAll('.nav button').forEach(b=>{
-    b.onclick = ()=>{ view=b.dataset.v; selectedCard=null; selectedDebt=null; selectedLoan=null; showAddCard=false; confirmDeleteCard=false; confirmDeleteDebt=null; render(); };
+    b.onclick = ()=>{ view=b.dataset.v; selectedCard=null; selectedDebt=null; selectedLoan=null; showAddCard=false; confirmDeleteCard=false; confirmDeleteDebt=null; confirmDeleteLoan=null; render(); };
   });
   renderMain();
 }
@@ -757,7 +764,7 @@ function deudoresView(){
   return `
     <div class="page-head">
       <h1>Deudores</h1>
-      <p>Favores y gastos marcados como "Debe" en tus tarjetas.</p>
+      <p>Favores marcados como "Debe" en tarjetas, y préstamos activos.</p>
     </div>
 
     <div class="statgrid">
@@ -767,14 +774,23 @@ function deudoresView(){
 
     <div class="panel">
       <h2>Pendientes</h2>
-      ${list.length===0?`<div class="empty">No tienes deudores registrados. Marca un movimiento de tarjeta como "Debe" para que aparezca aquí.</div>`:`
+      ${list.length===0?`<div class="empty">No tienes deudores registrados. Marca un movimiento de tarjeta como "Debe", o crea un préstamo, para que aparezca aquí.</div>`:`
       <table>
-        <thead><tr><th>Fecha</th><th>Tarjeta</th><th>Concepto</th><th style="text-align:right">Valor</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Origen</th><th>Concepto</th><th style="text-align:right">Valor</th><th>Estado</th><th></th></tr></thead>
         <tbody>
-          ${list.map(t=>`
+          ${list.map(t=> t.source==='prestamo' ? `
             <tr>
               <td class="mono">${fmtDate(t.date)}</td>
-              <td>${escapeHtml(t.cardName)}</td>
+              <td>${escapeHtml(t.origen)}</td>
+              <td>${escapeHtml(t.concept)}</td>
+              <td class="amt red">${fmt(t.value)}</td>
+              <td><span class="badge debe">Préstamo activo</span></td>
+              <td><button class="btn small secondary" data-viewloan="${t.loanId}">Ver</button></td>
+            </tr>
+          ` : `
+            <tr>
+              <td class="mono">${fmtDate(t.date)}</td>
+              <td>${escapeHtml(t.origen)}</td>
               <td>${escapeHtml(t.concept)}</td>
               <td class="amt red">${fmt(t.value)}</td>
               <td>${estadoSelectHtml(t)}</td>
@@ -901,7 +917,7 @@ function loanCardHtml(l){
   const payments = data.loanPayments.filter(p=>p.loanId===l.id).slice().sort((a,b)=>b.date.localeCompare(a.date));
   const open = selectedLoan===l.id;
   return `
-    <div class="debtcard">
+    <div class="debtcard" id="loan-${l.id}">
       <div class="flexbetween">
         <div>
           <div style="font-weight:600;font-size:15px;">${escapeHtml(l.name)}</div>
@@ -915,7 +931,13 @@ function loanCardHtml(l){
       <div class="progress-track" style="margin-top:12px;"><div style="width:${pct}%"></div></div>
       <div class="flexbetween" style="margin-top:8px;">
         <span style="color:var(--muted);font-size:12px;">Abonado ${fmt(paid)} (${pct.toFixed(0)}%)</span>
-        <button class="btn small secondary" data-toggleloan="${l.id}">${open?'Ocultar':'Entrar'}</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn small secondary" data-toggleloan="${l.id}">${open?'Ocultar':'Entrar'}</button>
+          ${confirmDeleteLoan===l.id?`
+            <button class="btn small secondary" data-canceldeleteloan="${l.id}">Cancelar</button>
+            <button class="btn small" style="background:var(--red);color:#fff;" data-confirmdeleteloan="${l.id}">Sí, eliminar</button>
+          `:`<button class="btn danger" data-deleteloan="${l.id}">Eliminar préstamo</button>`}
+        </div>
       </div>
 
       ${open?`
@@ -1140,7 +1162,32 @@ function attachHandlers(){
   };
 
   document.querySelectorAll('[data-toggleloan]').forEach(b=>{
-    b.onclick = ()=>{ selectedLoan = selectedLoan===b.dataset.toggleloan? null : b.dataset.toggleloan; render(); };
+    b.onclick = ()=>{ selectedLoan = selectedLoan===b.dataset.toggleloan? null : b.dataset.toggleloan; confirmDeleteLoan=null; render(); };
+  });
+
+  document.querySelectorAll('[data-viewloan]').forEach(b=>{
+    b.onclick = ()=>{
+      view = 'prestamos'; selectedLoan = b.dataset.viewloan; confirmDeleteLoan=null;
+      render();
+      const el = document.getElementById('loan-'+b.dataset.viewloan);
+      if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    };
+  });
+
+  document.querySelectorAll('[data-deleteloan]').forEach(b=>{
+    b.onclick = ()=>{ confirmDeleteLoan = b.dataset.deleteloan; render(); };
+  });
+  document.querySelectorAll('[data-canceldeleteloan]').forEach(b=>{
+    b.onclick = ()=>{ confirmDeleteLoan = null; render(); };
+  });
+  document.querySelectorAll('[data-confirmdeleteloan]').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.dataset.confirmdeleteloan;
+      data.loans = data.loans.filter(l=>l.id!==id);
+      data.loanPayments = data.loanPayments.filter(p=>p.loanId!==id);
+      confirmDeleteLoan = null; selectedLoan = null;
+      await saveData(); render();
+    };
   });
 
   document.querySelectorAll('[data-loanabonoform]').forEach(form=>{
