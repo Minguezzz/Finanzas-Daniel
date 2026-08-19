@@ -291,6 +291,7 @@ let selectedCard = null;
 let selectedDebt = null;
 let selectedLoan = null;
 let showAddCard = false;
+let showEditCard = false;
 let confirmDeleteCard = false;
 let confirmDeleteDebt = null;
 let confirmDeleteLoan = null;
@@ -526,7 +527,7 @@ function render(){
     data = null; selectedCard=null; selectedDebt=null; selectedLoan=null; view='resumen';
   };
   document.querySelectorAll('.nav button').forEach(b=>{
-    b.onclick = ()=>{ view=b.dataset.v; selectedCard=null; selectedDebt=null; selectedLoan=null; showAddCard=false; confirmDeleteCard=false; confirmDeleteDebt=null; confirmDeleteLoan=null; render(); };
+    b.onclick = ()=>{ view=b.dataset.v; selectedCard=null; selectedDebt=null; selectedLoan=null; showAddCard=false; showEditCard=false; confirmDeleteCard=false; confirmDeleteDebt=null; confirmDeleteLoan=null; render(); };
   });
   renderMain();
 }
@@ -669,6 +670,7 @@ function cardDetailView(cardId){
   const disp = c.limit - bal;
   const medeben = cardMeDeben(cardId);
   const capcov = cardCapitalCovered(cardId);
+  const knownBrand = ['amex','visa','mc'].includes(c.brand);
 
   return `
     <button class="detail-back" id="backBtn">← Volver a tarjetas</button>
@@ -684,9 +686,32 @@ function cardDetailView(cardId){
             <button class="btn small secondary" id="cancelDeleteCard">Cancelar</button>
             <button class="btn small" style="background:var(--red);color:#fff;" id="confirmDeleteCardBtn">Sí, eliminar</button>
           </div>
-        `:`<button class="btn danger" id="deleteCardBtn">Eliminar tarjeta</button>`}
+        `:`<div style="display:flex;gap:8px;">
+            <button class="btn secondary" id="toggleEditCard">${showEditCard?'Cancelar':'Editar tarjeta'}</button>
+            <button class="btn danger" id="deleteCardBtn">Eliminar tarjeta</button>
+          </div>`}
       </div>
     </div>
+
+    ${showEditCard?`
+    <div class="panel">
+      <h3>Editar tarjeta</h3>
+      <form id="editCardForm" class="form-grid">
+        <div class="field" style="grid-column:span 2;"><label>Nombre</label><input type="text" name="name" value="${escapeHtml(c.name)}" required></div>
+        <div class="field"><label>Últimos 4 dígitos</label><input type="text" name="last4" maxlength="4" pattern="[0-9]{4}" value="${escapeHtml(c.last4)}" required></div>
+        <div class="field"><label>Cupo</label><input type="number" name="limit" min="1" step="1" value="${c.limit}" required></div>
+        ${knownBrand?`
+        <div class="field"><label>Categoría</label>
+          <select name="category">
+            ${CATEGORY_OPTIONS[c.brand].map(o=>`<option value="${o[0]}" ${c.category===o[0]?'selected':''}>${o[1]}</option>`).join('')}
+          </select>
+        </div>`:`
+        <div class="field"><label>Categoría (opcional)</label><input type="text" name="customCategory" value="${escapeHtml(c.category||'')}"></div>
+        `}
+        <div class="field"><button class="btn" type="submit">Guardar cambios</button></div>
+      </form>
+    </div>
+    `:''}
 
     <div class="statgrid">
       <div class="stat"><div class="l">Usado</div><div class="v red">${fmt(bal)}</div></div>
@@ -1031,11 +1056,11 @@ function escapeHtml(s){
 /* ---------- handlers ---------- */
 function attachHandlers(){
   document.querySelectorAll('[data-card]').forEach(el=>{
-    el.onclick = ()=>{ selectedCard = el.dataset.card; confirmDeleteCard=false; render(); };
+    el.onclick = ()=>{ view='tarjetas'; selectedCard = el.dataset.card; confirmDeleteCard=false; showEditCard=false; render(); };
   });
 
   const backBtn = document.getElementById('backBtn');
-  if(backBtn) backBtn.onclick = ()=>{ selectedCard=null; confirmDeleteCard=false; render(); };
+  if(backBtn) backBtn.onclick = ()=>{ selectedCard=null; confirmDeleteCard=false; showEditCard=false; render(); };
 
   const toggleAddCard = document.getElementById('toggleAddCard');
   if(toggleAddCard) toggleAddCard.onclick = ()=>{ showAddCard = !showAddCard; render(); };
@@ -1084,6 +1109,25 @@ function attachHandlers(){
     data.cards = data.cards.filter(c=>c.id!==selectedCard);
     data.transactions = data.transactions.filter(t=>t.cardId!==selectedCard);
     selectedCard = null; confirmDeleteCard = false;
+    await saveData(); render();
+  };
+
+  const toggleEditCard = document.getElementById('toggleEditCard');
+  if(toggleEditCard) toggleEditCard.onclick = ()=>{ showEditCard = !showEditCard; render(); };
+
+  const editCardForm = document.getElementById('editCardForm');
+  if(editCardForm) editCardForm.onsubmit = async (e)=>{
+    e.preventDefault();
+    const f = new FormData(editCardForm);
+    const c = data.cards.find(x=>x.id===selectedCard);
+    if(c){
+      c.name = f.get('name').trim();
+      c.last4 = f.get('last4').trim();
+      c.limit = Number(f.get('limit'));
+      const knownBrand = ['amex','visa','mc'].includes(c.brand);
+      c.category = knownBrand ? f.get('category') : (f.get('customCategory')||'').trim();
+    }
+    showEditCard = false;
     await saveData(); render();
   };
 
