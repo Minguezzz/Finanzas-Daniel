@@ -190,6 +190,7 @@ tr:last-child td{border-bottom:none;}
 .badge.debe{background:rgba(193,84,60,.18);color:var(--red);}
 .badge.gasto{background:rgba(193,84,60,.15);color:var(--red);}
 .badge.abono{background:rgba(79,168,115,.15);color:var(--green);}
+.badge.adelanto{background:rgba(91,130,176,.18);color:var(--blue);}
 
 .badge-select{border:none;border-radius:20px;padding:5px 10px;font-size:11px;font-weight:600;letter-spacing:.2px;cursor:pointer;}
 .badge-select.cuenta{background:rgba(217,194,59,.18);color:var(--yellow);}
@@ -730,6 +731,7 @@ function cardDetailView(cardId){
           <select name="tipo">
             <option value="gasto">Gasto</option>
             <option value="abono">Abono</option>
+            <option value="adelanto">Adelanto de pago</option>
           </select>
         </div>
         <div class="field"><label>Estado</label>
@@ -754,7 +756,7 @@ function cardDetailView(cardId){
             <tr>
               <td class="mono">${fmtDate(t.date)}</td>
               <td>${escapeHtml(t.concept)}</td>
-              <td><span class="badge ${t.tipo}">${t.tipo==='gasto'?'Gasto':'Abono'}</span></td>
+              <td><span class="badge ${t.tipo}">${tipoLabel(t.tipo)}</span></td>
               <td>${estadoSelectHtml(t)}</td>
               <td class="amt ${t.tipo==='gasto'?'red':'green'}">${t.tipo==='gasto'?'−':'+'}${fmt(t.value)}</td>
               <td><button class="iconbtn" data-deltx="${t.id}">✕</button></td>
@@ -773,6 +775,13 @@ function estadoLabel(e){
   if(e==='capital') return 'Capital';
   if(e==='debe') return 'Debe';
   return e;
+}
+
+function tipoLabel(t){
+  if(t==='gasto') return 'Gasto';
+  if(t==='abono') return 'Abono';
+  if(t==='adelanto') return 'Adelanto';
+  return t;
 }
 
 function estadoSelectHtml(t){
